@@ -1,5 +1,10 @@
 import { createTool } from '@mastra/core/tools';
+import fs from 'fs';
 import { z } from 'zod';
+
+// Import WALRUS functionality
+import { downloadFile } from './walrus/download';
+import { uploadFile } from './walrus/upload';
 
 interface GeocodingResponse {
   results: {
@@ -100,3 +105,84 @@ function getWeatherCondition(code: number): string {
   };
   return conditions[code] || 'Unknown';
 }
+
+// WALRUS Upload Tool
+export const walrusUploadTool = createTool({
+  id: 'walrus-upload',
+  description: 'Upload a file to WALRUS decentralized storage',
+  inputSchema: z.object({
+    filePath: z.string().describe('Path to file to upload'),
+    numEpochs: z.number().describe('Storage duration in epochs'),
+    sendTo: z.string().optional().describe('Optional: Address to send object to'),
+  }),
+  outputSchema: z.object({
+    status: z.string(),
+    blobId: z.string(),
+    endEpoch: z.number(),
+    blobUrl: z.string(),
+    suiUrl: z.string(),
+    suiRefType: z.string(),
+    suiRef: z.string(),
+  }),
+  execute: async ({ context }) => {
+    // Ensure the file exists
+    if (!fs.existsSync(context.filePath)) {
+      throw new Error(`File not found: ${context.filePath}`);
+    }
+
+    try {
+      const uploadResult = await uploadFile(
+        context.filePath,
+        context.numEpochs,
+        context.sendTo
+      );
+      
+      return {
+        status: uploadResult.status,
+        blobId: uploadResult.blobId,
+        endEpoch: uploadResult.endEpoch,
+        blobUrl: uploadResult.blobUrl,
+        suiUrl: uploadResult.suiUrl,
+        suiRefType: uploadResult.suiRefType,
+        suiRef: uploadResult.suiRef,
+      };
+    } catch (error: any) {
+      throw new Error(`Error uploading file: ${error}`);
+    }
+  },
+});
+
+// WALRUS Download Tool
+export const walrusDownloadTool = createTool({
+  id: 'walrus-download',
+  description: 'Download a file from WALRUS decentralized storage',
+  inputSchema: z.object({
+    blobId: z.string().describe('ID of the WALRUS blob to download'),
+    outputPath: z.string().optional().describe('Optional: Path where to save the downloaded file'),
+  }),
+  outputSchema: z.object({
+    filePath: z.string(),
+    blobId: z.string(),
+    contentType: z.string(),
+    size: z.number(),
+    metadata: z.any().nullable(),
+  }),
+  execute: async ({ context }) => {
+    try {
+      const downloadResult = await downloadFile(
+        context.blobId,
+        context.outputPath
+      );
+      
+      return {
+        filePath: downloadResult.filePath,
+        blobId: downloadResult.blobId,
+        contentType: downloadResult.contentType,
+        size: downloadResult.size,
+        metadata: downloadResult.metadata,
+      };
+    } catch (error : any) {
+      throw new Error(`Error downloading file: ${error}`);
+    }
+  },
+});
